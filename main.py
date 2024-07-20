@@ -4,19 +4,28 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import redis
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
-from config import TOKEN, redis_port, redis_host
+from config import redis_port, redis_host
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+TOKEN = os.getenv("TOKEN")
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT"))
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 rates = {}
 last_update = datetime.min
-redis_host = redis_host
-redis_port = redis_port
+redis_host = REDIS_HOST
+redis_port = REDIS_PORT
 redis = redis.Redis(host=redis_host, port=redis_port, encoding='utf8', db=0)
 
 
