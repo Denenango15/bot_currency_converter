@@ -1,61 +1,31 @@
 import asyncio
-import aiohttp
+from datetime import datetime, timedelta
 import logging
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
-import redis
-import os
+import aiohttp
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
-from dotenv import load_dotenv
 
-
-load_dotenv()
-
-TOKEN = os.getenv("TOKEN")
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = int(os.getenv("REDIS_PORT"))
+from config import TOKEN
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 rates = {}
 last_update = datetime.min
-redis_host = REDIS_HOST
-redis_port = REDIS_PORT
-redis = redis.Redis(host=redis_host, port=redis_port, encoding='utf8', db=0)
-
 
 async def get_exchange_rates():
     global rates, last_update
 
-    rates_key = 'exchange_rates'
-    last_update_key = 'last_update'
-
-    rates_in_redis = redis.get(rates_key)
-    last_update_in_redis = redis.get(last_update_key)
-
-    if rates_in_redis and last_update_in_redis:
-        rates = eval(rates_in_redis)
-        last_update_in_redis_str = last_update_in_redis.decode('utf-8')
-        last_update = datetime.fromisoformat(last_update_in_redis_str)
-        if datetime.now() - last_update > timedelta(hours=12):
-            logging.info('Срок хранения данных в Redis превышает 12 часов, обновление...')
-            rates, last_update = await fetch_exchange_rates()
-            redis.set(rates_key, str(rates))
-            redis.set(last_update_key, last_update.isoformat())
-    else:
-        logging.info('Нет данных в Redis, для извлечения и хранения...')
+    if datetime.now() - last_update > timedelta(hours=12):
+        logging.info('Срок хранения данных превышает 12 часов, обновление...')
         rates, last_update = await fetch_exchange_rates()
-        redis.set(rates_key, str(rates))
-        redis.set(last_update_key, last_update.isoformat())
 
     rates['RUB'] = 1
 
     return rates
-
 
 async def fetch_exchange_rates():
     async with aiohttp.ClientSession() as session:
@@ -71,23 +41,18 @@ async def fetch_exchange_rates():
             last_update = datetime.now()
             return rates, last_update
 
-
 async def update_exchange_rates():
     while True:
         await asyncio.sleep(12 * 60 * 60)  # ждем 12 часов
         await get_exchange_rates()
 
-
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer('Привет, я помогу тебе с курсом валют.')
     rates = await get_exchange_rates()
+    await message.answer('Привет, я помогу тебе с курсом валют.')
     await message.answer('Текущие курсы валют:\n' + '\n'.join(f'{k}: {v}' for k, v in rates.items()))
-    await message.answer('Возможные пути перехода:\n'
-                         '/start - начать работу с ботом\n'
-                         '/exchange - конвертировать валюту\n'
-                         '/rates - получить текущие курсы валют')
-
+    await message.answer(
+        'Используйте команду в формате: /exchange <валюта 1> <валюта 2> <сумма> (USD RUB 10) или /rates чтобы получить весь список')
 
 @dp.message(Command('exchange'))
 async def get_exchange(message: Message):
@@ -115,7 +80,6 @@ async def get_exchange(message: Message):
     else:
         await message.answer(f'{amount} {base_currency} = {result} {target_currency}')
 
-
 @dp.message(Command('rates'))
 async def current_course(message: Message):
     if datetime.now() - last_update > timedelta(hours=24):
@@ -123,11 +87,9 @@ async def current_course(message: Message):
 
     await message.answer('Текущие курсы валют:\n' + '\n'.join(f'{k}: {v}' for k, v in rates.items()))
 
-
 async def main():
     asyncio.create_task(update_exchange_rates())
     await dp.start_polling(bot)
-
 
 if __name__ == '__main__':
     try:
